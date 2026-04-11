@@ -83,7 +83,7 @@ The full editor state is encoded in the URL, allowing you to:
 
 ## 📸 Preview
 
-<video src="demo.mp4" controls autoplay loop muted style="max-width:100%; border-radius:8px;"></video>
+https://github.com/user-attachments/assets/9ca8b566-dfac-432a-8937-3c1d0b4dbcda
 
 ---
 

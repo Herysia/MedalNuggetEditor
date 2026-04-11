@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Medal.tv Nugget Editor</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  </head>
+
+  <body class="bg-zinc-950 text-white h-screen overflow-hidden">
+    <div class="flex h-full">
+      <!-- SIDEBAR -->
+      <div
+        class="w-72 bg-zinc-900 p-4 flex flex-col gap-3 border-r border-zinc-800 select-none"
+      >
+        <h1 class="text-lg font-semibold">Medal.tv Nugget Editor</h1>
+
+        <button
+          id="loadBtn"
+          class="bg-indigo-600 hover:bg-indigo-500 rounded p-2"
+        >
+          Load Image
+        </button>
+
+        <div class="flex gap-2">
+          <button id="resetBtn" class="bg-zinc-700 rounded p-2 flex-1">
+            Reset
+          </button>
+          <button id="centerH" class="bg-zinc-700 rounded p-2 flex-1">
+            Center H
+          </button>
+          <button id="centerV" class="bg-zinc-700 rounded p-2 flex-1">
+            Center V
+          </button>
+        </div>
+
+        <label>Rows</label>
+        <input id="rows" type="range" min="1" max="10" step="1" value="3" />
+        <span id="rowsValue" class="text-sm text-zinc-400">3</span>
+
+        <div id="layouts" class="flex flex-col gap-2"></div>
+
+        <label>Scale</label>
+        <input id="scale" type="range" min="0.1" max="2" step="0.01" />
+
+        <label>Brightness</label>
+        <input
+          id="brightness"
+          type="range"
+          min="0"
+          max="0.8"
+          step="0.01"
+          value="0.25"
+        />
+
+        <button id="shareBtn" class="bg-indigo-600 p-2 rounded">
+          Share Layout
+        </button>
+
+        <button
+          id="generate"
+          class="bg-indigo-600 hover:bg-indigo-500 rounded p-2 mt-auto"
+        >
+          Generate
+        </button>
+
+        <button id="downloadZip" class="bg-zinc-700 rounded p-2">
+          Download ZIP
+        </button>
+
+        <div class="mt-1 text-center text-xs text-zinc-400">
+          Made with <span class="text-red-400">&lt;3</span> by
+          <a
+            href="https://medal.tv/u/Herysia/?invite=ur-MSxBVmssNDUyNzI3MzQ2"
+            target="_blank"
+            class="text-indigo-400 hover:underline"
+          >
+            Herysia
+          </a>
+          -
+          <a
+            href="https://github.com/Herysia/MedalNuggetEditor/"
+            target="_blank"
+            class="text-indigo-400 hover:underline"
+          >
+            Github
+          </a>
+        </div>
+      </div>
+
+      <!-- MAIN AREA -->
+      <div class="flex-1 flex flex-col overflow-hidden">
+        <!-- CANVAS AREA -->
+        <div class="flex-1 relative bg-zinc-950 overflow-hidden">
+          <div class="absolute inset-0 flex items-center justify-center">
+            <canvas id="canvas" class="bg-zinc-900 rounded shadow"></canvas>
+
+            <!-- PLACEHOLDER -->
+            <div
+              id="dropPlaceholder"
+              class="absolute flex flex-col items-center justify-center p-6 bg-zinc-800/90 text-zinc-400 border border-dashed border-zinc-600 rounded-lg shadow-lg select-none"
+            >
+              <p class="text-sm font-semibold">Drop an image here</p>
+              <p class="text-xs mt-1">or click “Load Image”</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- EXPORT PANEL -->
+        <div
+          id="exportPanel"
+          class="shrink-0 h-[257px] bg-zinc-900 border-t border-zinc-800 p-3 select-none"
+        >
+          <h2 class="mb-2">Export</h2>
+          <div
+            id="previewList"
+            class="flex gap-3 overflow-x-auto h-[200px]"
+          ></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL -->
+    <div
+      id="modal"
+      class="fixed inset-0 bg-black/70 flex items-center justify-center hidden select-none"
+    >
+      <div class="bg-zinc-900 p-6 rounded-lg w-80 flex flex-col gap-3">
+        <h2 class="text-lg">Load Image</h2>
+
+        <input type="file" id="fileInput" class="bg-zinc-800 p-2 rounded" />
+
+        <input
+          id="urlInput"
+          placeholder="Paste URL and press Enter"
+          class="bg-zinc-800 p-2 rounded"
+        />
+
+        <div
+          id="dropZone"
+          class="border-2 border-dashed border-zinc-600 p-6 text-center rounded"
+        >
+          Drop image here
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -14,7 +14,8 @@ Perfect for creating aesthetic profile tiles and structured image sets.
 
 ## ✨ Features
 
-- 🖼 Load images (drag & drop, file picker, URL)
+- 🖼 Load images **and GIFs** (drag & drop, file picker, URL)
+- 🎞 GIF support
 - 📐 Multiple grid layouts:
   - Eyes
   - Pocket
@@ -68,6 +69,29 @@ The full editor state is encoded in the URL, allowing you to:
 - Reopen exact same layout
 - Share configurations
 - Reopen your configuration later, for example if you edited the input image and just want a single nugget
+
+---
+
+## 🛠 Running Locally
+
+⚠️ It won't work properly if you open the project directly via `file://` due to CORS restrictions.
+
+👉 You **must run a local server**.
+
+### Quick options:
+
+- Using Python:
+```
+python -m http.server
+```
+- Using Node:
+```
+npx serve
+```
+
+Then open:
+http://localhost:8000  
+(or the port shown in your terminal)
 
 ---
 

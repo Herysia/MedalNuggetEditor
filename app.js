@@ -1,13 +1,17 @@
+import {
+  encode,
+  decode,
+  decodeFrames,
+} from "https://cdn.jsdelivr.net/npm/modern-gif/+esm";
+import workerUrl from "https://cdn.jsdelivr.net/npm/modern-gif/+esm?url";
+
 // ===================== SETUP =====================
 
 const canvas = document.getElementById("canvas");
 const ctx = canvas.getContext("2d");
 
 const modal = document.getElementById("modal");
-const dropZone = document.getElementById("dropZone");
-
 const layoutsContainer = document.getElementById("layouts");
-const exportPanel = document.getElementById("exportPanel");
 const previewList = document.getElementById("previewList");
 
 const rowsInput = document.getElementById("rows");
@@ -17,6 +21,13 @@ canvas.width = window.innerWidth - 288;
 canvas.height = window.innerHeight - 257;
 
 let image = null;
+let isGIF = false;
+let gifFrames = [];
+let currentFrameIndex = 0;
+let lastFrameTime = 0;
+let gifPaused = false;
+let animationFrame = null;
+let gifReader = null;
 
 let state = {
   rows: 3,
@@ -30,6 +41,187 @@ let state = {
 const LAYOUTS = ["Eyes", "Pocket", "Bike Lane", "Bento", "Otneb"];
 const BASE_REF_WIDTH = 1000;
 
+// ===================== GIF ANIMATION =====================
+
+function stopGIFAnimation() {
+  if (animationFrame) {
+    cancelAnimationFrame(animationFrame);
+    animationFrame = null;
+  }
+}
+
+function startGIFAnimation() {
+  stopGIFAnimation();
+  if (!isGIF || gifFrames.length === 0 || gifPaused) return;
+
+  const animate = (timestamp) => {
+    if (!lastFrameTime) lastFrameTime = timestamp;
+
+    const frame = gifFrames[currentFrameIndex];
+    if (timestamp - lastFrameTime > frame.delay) {
+      currentFrameIndex = (currentFrameIndex + 1) % gifFrames.length;
+      lastFrameTime = timestamp;
+      draw();
+    }
+    animationFrame = requestAnimationFrame(animate);
+  };
+
+  animationFrame = requestAnimationFrame(animate);
+}
+
+// ===================== GIF DECODING (Decoder part) =====================
+
+async function loadAndDecodeGIF(src, filename = "") {
+  stopGIFAnimation();
+
+  gifFrames = [];
+  currentFrameIndex = 0;
+  isGIF = false;
+
+  const lowerName = (filename || "").toLowerCase();
+  const isGifFile =
+    lowerName.endsWith(".gif") ||
+    (typeof src === "string" && src.startsWith("data:image/gif"));
+
+  if (!isGifFile) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        image = img;
+        resolve(true);
+      };
+      img.onerror = () => resolve(false);
+      img.src = src;
+    });
+  }
+
+  isGIF = true;
+
+  try {
+    const buffer = await (await fetch(src)).arrayBuffer();
+
+    const gif = decode(buffer);
+
+    const width = gif.width;
+    const height = gif.height;
+
+    if (!width || !height) {
+      throw new Error("Invalid GIF metadata");
+    }
+
+    const frames = await decodeFrames(buffer, { workerUrl });
+
+    if (!frames?.length) {
+      throw new Error("No frames decoded");
+    }
+
+    for (let i = 0; i < frames.length; i++) {
+      const frame = frames[i];
+
+      const canvas = document.createElement("canvas");
+      canvas.width = frame.width;
+      canvas.height = frame.height;
+
+      const ctx = canvas.getContext("2d");
+
+      ctx.putImageData(
+        new ImageData(
+          frame.data,
+          frame.width,
+          frame.height
+        ),
+        0,
+        0
+      );
+
+      gifFrames.push({
+        data: canvas,
+        delay: Math.max(frame.delay || 2, 1)
+      });
+    }
+
+    image = gifFrames[0].data;
+
+    console.log(
+      `%cGIF decoded with modern-gif + worker (${frames.length} frames)`,
+      "color: lime"
+    );
+
+    return true;
+  } catch (err) {
+    console.error("modern-gif decode failed:", err);
+
+    isGIF = false;
+
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        image = img;
+        resolve(true);
+      };
+      img.onerror = () => resolve(false);
+      img.src = src;
+    });
+  }
+}
+
+// ===================== ANIMATED GIF EXPORT =====================
+
+async function createAnimatedGIF(cropRect) {
+  if (!isGIF || gifFrames.length === 0) {
+    console.warn("No GIF frames available");
+    return null;
+  }
+
+  try {
+    const w = Math.round(cropRect.sw);
+    const h = Math.round(cropRect.sh);
+
+    const frames = [];
+
+    for (const frame of gifFrames) {
+      const temp = document.createElement("canvas");
+      temp.width = w;
+      temp.height = h;
+
+      const ctx = temp.getContext("2d");
+
+      ctx.drawImage(
+        frame.data,
+        cropRect.sx,
+        cropRect.sy,
+        cropRect.sw,
+        cropRect.sh,
+        0,
+        0,
+        w,
+        h
+      );
+
+      frames.push({
+        data: temp,
+        delay: Math.max(Math.round(frame.delay), 20)
+      });
+    }
+
+    const output = await encode({
+      workerUrl,
+      width: w,
+      height: h,
+      frames
+    });
+
+    const blob = new Blob([output], { type: "image/gif" });
+
+    return URL.createObjectURL(blob);
+
+  } catch (err) {
+    console.error("Failed to create animated GIF:", err);
+    return null;
+  }
+}
 // ===================== IMAGE DISPLAY =====================
 
 let cachedImageRect = null;
@@ -128,24 +320,27 @@ syncUIFromState();
 
 // ===================== IMAGE LOADING =====================
 
-function loadImage(src) {
-  const img = new Image();
-  img.crossOrigin = "anonymous";
+async function loadImage(src, filename = "") {
+  stopGIFAnimation();
+  const success = await loadAndDecodeGIF(src, filename);
+  if (!success) return;
 
-  img.onload = () => {
-    image = img;
-    updatePlaceholder();
-    syncUIFromState();
-    updateImageRect();
-    draw(); // no reset
-  };
+  updatePlaceholder();
+  syncUIFromState();
+  updateImageRect();
 
-  img.src = src;
+  if (isGIF && gifFrames.length > 0) {
+    currentFrameIndex = 0;
+    lastFrameTime = 0;
+    startGIFAnimation();
+  } else {
+    draw();
+  }
 }
 
 function loadFile(file) {
   const r = new FileReader();
-  r.onload = (e) => loadImage(e.target.result);
+  r.onload = (e) => loadImage(e.target.result, file.name);
   r.readAsDataURL(file);
 }
 
@@ -186,20 +381,15 @@ document.getElementById("urlInput").onkeydown = (e) => {
 
 // ===================== DRAG & DROP =====================
 
-function hasFiles(e) {
-  return e.dataTransfer && [...e.dataTransfer.types].includes("Files");
-}
-
 window.addEventListener("dragover", (e) => {
-  if (!hasFiles(e)) return;
-  e.preventDefault();
+  if (e.dataTransfer.types.includes("Files")) e.preventDefault();
 });
-
 window.addEventListener("drop", (e) => {
-  if (!hasFiles(e)) return;
-  e.preventDefault();
-  loadFile(e.dataTransfer.files[0]);
-  closeModal();
+  if (e.dataTransfer.files[0]) {
+    e.preventDefault();
+    loadFile(e.dataTransfer.files[0]);
+    closeModal();
+  }
 });
 
 function updatePlaceholder() {
@@ -325,17 +515,17 @@ function getRects() {
 
   return rects.map((r) => ({
     ...r,
-    sx: (r.x - getImageDisplayRect().x) / getImageDisplayRect().scale,
-    sy: (r.y - getImageDisplayRect().y) / getImageDisplayRect().scale,
-    sw: r.w / getImageDisplayRect().scale,
-    sh: r.h / getImageDisplayRect().scale,
+    sx: (r.x - img.x) / img.scale,
+    sy: (r.y - img.y) / img.scale,
+    sw: r.w / img.scale,
+    sh: r.h / img.scale,
   }));
 }
 
 // ===================== DRAW =====================
 
 function draw() {
-  saveStateToURL();
+  queueSaveStateToURL();
   if (!image) return;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -343,21 +533,29 @@ function draw() {
   const img = getImageDisplayRect();
 
   ctx.globalAlpha = state.brightness;
-  ctx.drawImage(image, img.x, img.y, img.w, img.h);
+
+  if (isGIF && gifFrames.length > 0) {
+    const frame = gifFrames[currentFrameIndex];
+    ctx.drawImage(frame.data, img.x, img.y, img.w, img.h);
+  } else {
+    ctx.drawImage(image, img.x, img.y, img.w, img.h);
+  }
 
   ctx.globalAlpha = 1;
 
   getRects().forEach((r) => {
-    ctx.drawImage(image, r.sx, r.sy, r.sw, r.sh, r.x, r.y, r.w, r.h);
+    if (isGIF && gifFrames.length > 0) {
+      const frame = gifFrames[currentFrameIndex];
+      ctx.drawImage(frame.data, r.sx, r.sy, r.sw, r.sh, r.x, r.y, r.w, r.h);
+    } else {
+      ctx.drawImage(image, r.sx, r.sy, r.sw, r.sh, r.x, r.y, r.w, r.h);
+    }
     ctx.strokeStyle = "rgba(255,255,255,0.3)";
     ctx.strokeRect(r.x, r.y, r.w, r.h);
   });
 }
 
 // ===================== CONTROLS =====================
-
-rowsInput.value = state.rows;
-rowsValue.textContent = state.rows;
 
 rowsInput.oninput = (e) => {
   state.rows = +e.target.value;
@@ -388,32 +586,43 @@ document.getElementById("resetBtn").onclick = () => {
 };
 
 document.getElementById("scale").oninput = (e) => {
-  state.scale = parseFloat(e.target.value) ?? 1;
+  state.scale = +e.target.value;
   draw();
 };
 
 document.getElementById("brightness").oninput = (e) => {
-  state.brightness = parseFloat(e.target.value) ?? 0.25;
+  state.brightness = +e.target.value;
   draw();
 };
 
 document.getElementById("shareBtn").onclick = async () => {
-  try {
-    saveStateToURL();
-    await navigator.clipboard.writeText(location.href);
-
-    const oldText = shareBtn.textContent;
-    shareBtn.textContent = "Link copied ✓";
-
-    setTimeout(() => {
-      shareBtn.textContent = oldText;
-    }, 1200);
-  } catch (e) {
-    alert("Copy failed");
-  }
+  saveStateToURL();
+  await navigator.clipboard.writeText(location.href);
+  const btn = document.getElementById("shareBtn");
+  const old = btn.textContent;
+  btn.textContent = "Link copied ✓";
+  setTimeout(() => (btn.textContent = old), 1200);
 };
 
-// ===================== LAYOUT SELECTORS =====================
+// Pause/Play GIF
+let pauseBtn = document.getElementById("pauseGifBtn");
+if (!pauseBtn) {
+  pauseBtn = document.createElement("button");
+  pauseBtn.id = "pauseGifBtn";
+  pauseBtn.textContent = "Pause GIF";
+  pauseBtn.style.marginLeft = "12px";
+  const ctrl =
+    document.getElementById("controls") ||
+    document.querySelector(".controls") ||
+    document.body;
+  ctrl.appendChild(pauseBtn);
+}
+pauseBtn.onclick = () => {
+  gifPaused = !gifPaused;
+  pauseBtn.textContent = gifPaused ? "Play GIF" : "Pause GIF";
+  if (gifPaused) stopGIFAnimation();
+  else startGIFAnimation();
+};
 
 function renderLayoutSelectors() {
   layoutsContainer.innerHTML = "";
@@ -476,25 +685,42 @@ document.getElementById("generate").onclick = () => {
   previewList.innerHTML = "";
 
   getRects().forEach((r) => {
-    const c = document.createElement("canvas");
-    c.width = r.sw;
-    c.height = r.sh;
+    const container = document.createElement("div");
+    container.style.margin = "8px";
+    container.style.display = "inline-block";
 
-    const cctx = c.getContext("2d");
-    cctx.drawImage(image, r.sx, r.sy, r.sw, r.sh, 0, 0, c.width, c.height);
+    if (isGIF && gifFrames.length > 0) {
+      const previewImg = document.createElement("img");
+      previewImg.style.maxWidth = "160px";
+      previewImg.style.borderRadius = "6px";
 
-    const url = c.toDataURL();
+      createAnimatedGIF(r).then((url) => {
+        if (url) previewImg.src = url;
+      });
 
-    const img = document.createElement("img");
-    img.src = url;
-    img.className = "w-40 h-auto rounded object-cover flex-shrink-0";
+      const link = document.createElement("a");
+      link.download = `nugget_${r.row}_${r.col}.gif`;
+      link.appendChild(previewImg);
+      container.appendChild(link);
+    } else {
+      const c = document.createElement("canvas");
+      c.width = r.sw;
+      c.height = r.sh;
 
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `nugget_${r.row}_${r.col}.png`;
-    link.appendChild(img);
+      const cctx = c.getContext("2d");
+      cctx.drawImage(image, r.sx, r.sy, r.sw, r.sh, 0, 0, c.width, c.height);
 
-    previewList.appendChild(link);
+      const imgEl = document.createElement("img");
+      imgEl.src = c.toDataURL();
+      imgEl.className = "w-40 h-auto rounded";
+
+      const link = document.createElement("a");
+      link.href = c.toDataURL();
+      link.download = `nugget_${r.row}_${r.col}.png`;
+      link.appendChild(imgEl);
+      container.appendChild(link);
+    }
+    previewList.appendChild(container);
   });
 };
 
@@ -502,25 +728,32 @@ document.getElementById("downloadZip").onclick = async () => {
   if (!image) return;
 
   const zip = new JSZip();
-  const rects = getRects();
 
-  rects.forEach((r) => {
-    const c = document.createElement("canvas");
-    c.width = r.sw;
-    c.height = r.sh;
+  getRects().forEach(async (r) => {
+    if (isGIF && gifFrames.length > 0) {
+      const gifUrl = await createAnimatedGIF(r);
+      if (gifUrl) {
+        const blob = await fetch(gifUrl).then((res) => res.blob());
+        zip.file(`nugget_${r.row}_${r.col}.gif`, blob);
+      }
+    } else {
+      const c = document.createElement("canvas");
+      c.width = r.sw;
+      c.height = r.sh;
 
-    const cctx = c.getContext("2d");
-    cctx.drawImage(image, r.sx, r.sy, r.sw, r.sh, 0, 0, c.width, c.height);
+      const cctx = c.getContext("2d");
+      cctx.drawImage(image, r.sx, r.sy, r.sw, r.sh, 0, 0, c.width, c.height);
 
-    const data = c.toDataURL("image/png").split(",")[1];
+      const data = c.toDataURL("image/png").split(",")[1];
 
-    zip.file(`nugget_${r.row}_${r.col}.png`, data, { base64: true });
+      zip.file(`nugget_${r.row}_${r.col}.png`, data, { base64: true });
+    }
   });
 
   const blob = await zip.generateAsync({ type: "blob" });
 
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "nuggets.zip";
+  a.download = isGIF ? "nuggets_animated.zip" : "nuggets.zip";
   a.click();
 };

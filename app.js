@@ -27,7 +27,6 @@ let currentFrameIndex = 0;
 let lastFrameTime = 0;
 let gifPaused = false;
 let animationFrame = null;
-let gifReader = null;
 
 let state = {
   rows: 3,
@@ -61,7 +60,7 @@ function startGIFAnimation() {
     if (timestamp - lastFrameTime > frame.delay) {
       currentFrameIndex = (currentFrameIndex + 1) % gifFrames.length;
       lastFrameTime = timestamp;
-      draw();
+      draw(false);
     }
     animationFrame = requestAnimationFrame(animate);
   };
@@ -524,8 +523,8 @@ function getRects() {
 
 // ===================== DRAW =====================
 
-function draw() {
-  queueSaveStateToURL();
+function draw(saveState = true) {
+  if(saveState) queueSaveStateToURL();
   if (!image) return;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);

@@ -2,8 +2,16 @@ import {
   encode,
   decode,
   decodeFrames,
-} from "https://cdn.jsdelivr.net/npm/modern-gif/+esm";
-import workerUrl from "https://cdn.jsdelivr.net/npm/modern-gif/+esm?url";
+} from "https://cdn.jsdelivr.net/npm/modern-gif@2.1.0/+esm";
+const workerSource = await fetch(
+  "https://cdn.jsdelivr.net/npm/modern-gif@2.1.0/dist/worker.js",
+).then((r) => r.text());
+
+const workerUrl = URL.createObjectURL(
+  new Blob([workerSource], {
+    type: "application/javascript",
+  }),
+);
 
 // ===================== SETUP =====================
 
@@ -125,18 +133,14 @@ async function loadAndDecodeGIF(src, filename = "") {
       const ctx = canvas.getContext("2d");
 
       ctx.putImageData(
-        new ImageData(
-          frame.data,
-          frame.width,
-          frame.height
-        ),
+        new ImageData(frame.data, frame.width, frame.height),
         0,
-        0
+        0,
       );
 
       gifFrames.push({
         data: canvas,
-        delay: Math.max(frame.delay || 2, 1)
+        delay: Math.max(frame.delay || 2, 1),
       });
     }
 
@@ -144,7 +148,7 @@ async function loadAndDecodeGIF(src, filename = "") {
 
     console.log(
       `%cGIF decoded with modern-gif + worker (${frames.length} frames)`,
-      "color: lime"
+      "color: lime",
     );
 
     return true;
@@ -196,12 +200,14 @@ async function createAnimatedGIF(cropRect) {
         0,
         0,
         w,
-        h
+        h,
       );
 
+      const imageData = ctx.getImageData(0, 0, w, h);
+
       frames.push({
-        data: temp,
-        delay: Math.max(Math.round(frame.delay), 20)
+        data: imageData.data,
+        delay: Math.max(Math.round(frame.delay), 20),
       });
     }
 
@@ -209,13 +215,12 @@ async function createAnimatedGIF(cropRect) {
       workerUrl,
       width: w,
       height: h,
-      frames
+      frames,
     });
 
     const blob = new Blob([output], { type: "image/gif" });
 
     return URL.createObjectURL(blob);
-
   } catch (err) {
     console.error("Failed to create animated GIF:", err);
     return null;
@@ -524,7 +529,7 @@ function getRects() {
 // ===================== DRAW =====================
 
 function draw(saveState = true) {
-  if(saveState) queueSaveStateToURL();
+  if (saveState) queueSaveStateToURL();
   if (!image) return;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
